@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Teleprompter</title>
+<style>
+  :root{
+    --azul: #1f5c63;
+    --azul-claro: #6fb3ba;
+    --texto: #f4f4f0;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{
+    height:100%;
+    background:#000;
+    color:var(--texto);
+    font-family:-apple-system, Segoe UI, Roboto, sans-serif;
+    overflow:hidden;
+  }
+  /* ---------- PANTALLA DE INICIO ---------- */
+  #setup{
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    padding:24px;
+    gap:16px;
+  }
+  #setup h1{
+    font-size:22px;
+    font-weight:600;
+    color:var(--azul-claro);
+    margin-bottom:4px;
+  }
+  #setup p{
+    font-size:14px;
+    color:#bbb;
+    line-height:1.4;
+  }
+  #script{
+    flex:1;
+    width:100%;
+    background:#1a1a1a;
+    color:var(--texto);
+    border:1px solid #333;
+    border-radius:12px;
+    padding:16px;
+    font-size:18px;
+    line-height:1.6;
+    resize:none;
+    outline:none;
+  }
+  #script:focus{border-color:var(--azul-claro);}
+
+  .controls-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    font-size:14px;
+    color:#ccc;
+  }
+  .controls-row label{flex:1;}
+  input[type=range]{
+    flex:1;
+    accent-color: var(--azul-claro);
+  }
+
+  #startBtn{
+    background:var(--azul);
+    color:#fff;
+    border:none;
+    border-radius:14px;
+    padding:18px;
+    font-size:18px;
+    font-weight:600;
+    width:100%;
+  }
+  #startBtn:active{opacity:0.85;}
+
+  /* ---------- PANTALLA DE GRABACIÓN ---------- */
+  #stage{
+    position:fixed;
+    inset:0;
+    display:none;
+    background:#000;
+  }
+  video#camera{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    transform:scaleX(-1);
+  }
+
+  #overlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    pointer-events:none;
+  }
+  #promptBox{
+    background:rgba(0,0,0,0.45);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    padding:24px 28px;
+    max-height:60%;
+    overflow:hidden;
+    border-top:1px solid rgba(255,255,255,0.15);
+    border-bottom:1px solid rgba(255,255,255,0.15);
+  }
+  #promptText{
+    font-size:clamp(20px, 4.5vw, 34px);
+    line-height:1.5;
+    color:#fff;
+    text-shadow:0 1px 4px rgba(0,0,0,0.6);
+    white-space:pre-wrap;
+    transform: translateY(100%);
+  }
+
+  /* línea guía central */
+  #guideLine{
+    position:absolute;
+    left:0;right:0;
+    top:50%;
+    height:2px;
+    background:var(--azul-claro);
+    opacity:0.5;
+    pointer-events:none;
+  }
+
+  /* ---------- BARRA DE CONTROLES INFERIOR ---------- */
+  #bar{
+    position:absolute;
+    bottom:0;left:0;right:0;
+    display:flex;
+    align-items:center;
+    justify-content:space-around;
+    padding:14px 10px calc(14px + env(safe-area-inset-bottom));
+    background:linear-gradient(to top, rgba(0,0,0,0.7), rgba(0,0,0,0));
+  }
+  .btn{
+    background:rgba(255,255,255,0.12);
+    border:1px solid rgba(255,255,255,0.25);
+    color:#fff;
+    border-radius:50px;
+    padding:12px 18px;
+    font-size:14px;
+    font-weight:600;
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  #recordBtn{
+    background:#d83a3a;
+    border:none;
+    padding:16px 28px;
+    font-size:16px;
+  }
+  #recordBtn.recording{
+    background:#777;
+  }
+  #recordBtn.recording::before{
+    content:"⏹";
+  }
+  #recordBtn:not(.recording)::before{
+    content:"⏺";
+  }
+
+  /* ---------- BARRA SUPERIOR ---------- */
+  #topbar{
+    position:absolute;
+    top:0;left:0;right:0;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+    background:linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0));
+  }
+  #speedControl{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:rgba(0,0,0,0.4);
+    border-radius:50px;
+    padding:8px 14px;
+    color:#fff;
+    font-size:13px;
+  }
+  #speedControl input{
+    width:90px;
+  }
+
+  #downloadLink{
+    display:none;
+  }
+
+  #status{
+    position:absolute;
+    top:calc(10px + env(safe-area-inset-top));
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(216,58,58,0.9);
+    color:#fff;
+    padding:6px 14px;
+    border-radius:50px;
+    font-size:13px;
+    font-weight:600;
+    display:none;
+  }
+  #status.show{display:block;}
+
+  /* mensaje de descarga */
+  #downloadPanel{
+    position:absolute;
+    bottom:0;left:0;right:0;
+    background:#111;
+    padding:20px 16px calc(20px + env(safe-area-inset-bottom));
+    display:none;
+    flex-direction:column;
+    gap:10px;
+  }
+  #downloadPanel.show{display:flex;}
+  #downloadPanel a, #downloadPanel button{
+    text-decoration:none;
+    text-align:center;
+    border-radius:12px;
+    padding:14px;
+    font-size:16px;
+    font-weight:600;
+  }
+  #downloadPanel a{background:var(--azul); color:#fff;}
+  #downloadPanel button{background:#333; color:#fff; border:none;}
+</style>
+</head>
+<body>
+
+<!-- ===================== PANTALLA DE INICIO ===================== -->
+<div id="setup">
+  <h1>Teleprompter</h1>
+  <p>Escribe o pega tu texto abajo. Luego ajusta la velocidad y presiona "Empezar".</p>
+  <textarea id="script" placeholder="Escribe aquí lo que quieres decir...">Hola, este es un ejemplo de texto. Edítalo y escribe lo que quieras decir en tu video.</textarea>
+
+  <div class="controls-row">
+    <label for="speed">Velocidad de lectura</label>
+    <input type="range" id="speed" min="1" max="10" value="4">
+  </div>
+
+  <div class="controls-row">
+    <label for="fontsize">Tamaño del texto</label>
+    <input type="range" id="fontsize" min="16" max="48" value="28">
+  </div>
+
+  <button id="startBtn">Empezar</button>
+</div>
+
+<!-- ===================== PANTALLA DE GRABACIÓN ===================== -->
+<div id="stage">
+  <video id="camera" autoplay playsinline muted></video>
+  <div id="guideLine"></div>
+
+  <div id="overlay">
+    <div id="promptBox">
+      <div id="promptText"></div>
+    </div>
+  </div>
+
+  <div id="status">Grabando</div>
+
+  <div id="topbar">
+    <button class="btn" id="backBtn">← Editar texto</button>
+    <div id="speedControl">
+      <span>Velocidad</span>
+      <input type="range" id="speedLive" min="1" max="10" value="4">
+    </div>
+  </div>
+
+  <div id="bar">
+    <button class="btn" id="flipBtn">🔄 Cámara</button>
+    <button class="btn" id="recordBtn">Grabar</button>
+    <button class="btn" id="restartBtn">⟲ Reiniciar texto</button>
+  </div>
+
+  <div id="downloadPanel">
+    <a id="downloadLink" download="video.webm">Descargar video</a>
+    <button id="closeDownload">Cerrar</button>
+  </div>
+</div>
+
+<script>
+const setup = document.getElementById('setup');
+const stage = document.getElementById('stage');
+const scriptEl = document.getElementById('script');
+const speedEl = document.getElementById('speed');
+const speedLiveEl = document.getElementById('speedLive');
+const fontsizeEl = document.getElementById('fontsize');
+const promptText = document.getElementById('promptText');
+const promptBox = document.getElementById('promptBox');
+const cameraVideo = document.getElementById('camera');
+const recordBtn = document.getElementById('recordBtn');
+const flipBtn = document.getElementById('flipBtn');
+const restartBtn = document.getElementById('restartBtn');
+const backBtn = document.getElementById('backBtn');
+const statusEl = document.getElementById('status');
+const downloadPanel = document.getElementById('downloadPanel');
+const downloadLink = document.getElementById('downloadLink');
+const closeDownload = document.getElementById('closeDownload');
+
+let stream = null;
+let mediaRecorder = null;
+let chunks = [];
+let isRecording = false;
+let useFrontCamera = true;
+
+let scrollAnim = null;
+let scrollPos = 0; // px
+
+speedLiveEl.value = speedEl.value;
+
+document.getElementById('startBtn').addEventListener('click', async () => {
+  setup.style.display = 'none';
+  stage.style.display = 'block';
+  promptText.style.fontSize = fontsizeEl.value + 'px';
+  promptText.textContent = scriptEl.value;
+  resetScroll();
+  await startCamera();
+});
+
+backBtn.addEventListener('click', () => {
+  stopScroll();
+  stage.style.display = 'none';
+  setup.style.display = 'flex';
+});
+
+async function startCamera(facingMode = 'user') {
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facingMode },
+      audio: true
+    });
+    cameraVideo.srcObject = stream;
+    cameraVideo.style.transform = facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
+  } catch (err) {
+    alert('No se pudo acceder a la cámara. Revisa los permisos en el navegador.\n\n' + err.message);
+  }
+}
+
+flipBtn.addEventListener('click', () => {
+  if (isRecording) return;
+  useFrontCamera = !useFrontCamera;
+  startCamera(useFrontCamera ? 'user' : 'environment');
+});
+
+// ---------- SCROLL DEL TEXTO ----------
+function resetScroll() {
+  scrollPos = promptBox.clientHeight; // empieza fuera de pantalla, abajo
+  promptText.style.transform = `translateY(${scrollPos}px)`;
+}
+
+function startScroll() {
+  let lastTime = null;
+  function step(timestamp) {
+    if (lastTime === null) lastTime = timestamp;
+    const dt = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+    const speedVal = parseFloat(speedLiveEl.value);
+    const pxPerSec = speedVal * 18; // ajustar sensación de velocidad
+    scrollPos -= pxPerSec * dt;
+    promptText.style.transform = `translateY(${scrollPos}px)`;
+    scrollAnim = requestAnimationFrame(step);
+  }
+  scrollAnim = requestAnimationFrame(step);
+}
+
+function stopScroll() {
+  if (scrollAnim) cancelAnimationFrame(scrollAnim);
+  scrollAnim = null;
+}
+
+restartBtn.addEventListener('click', () => {
+  stopScroll();
+  resetScroll();
+  if (isRecording) startScroll();
+});
+
+// ---------- GRABACIÓN ----------
+recordBtn.addEventListener('click', () => {
+  if (!isRecording) {
+    startRecording();
+  } else {
+    stopRecording();
+  }
+});
+
+function startRecording() {
+  if (!stream) return;
+  chunks = [];
+  let options = { mimeType: 'video/webm;codecs=vp9,opus' };
+  try {
+    mediaRecorder = new MediaRecorder(stream, options);
+  } catch (e) {
+    try {
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    } catch (e2) {
+      mediaRecorder = new MediaRecorder(stream);
+    }
+  }
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
+  };
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    downloadLink.href = url;
+    const ts = new Date().toISOString().replace(/[:.]/g,'-');
+    downloadLink.download = `teleprompter-${ts}.webm`;
+    downloadPanel.classList.add('show');
+  };
+  mediaRecorder.start();
+  isRecording = true;
+  recordBtn.textContent = 'Detener';
+  recordBtn.classList.add('recording');
+  statusEl.classList.add('show');
+  resetScroll();
+  startScroll();
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  isRecording = false;
+  recordBtn.textContent = 'Grabar';
+  recordBtn.classList.remove('recording');
+  statusEl.classList.remove('show');
+  stopScroll();
+}
+
+closeDownload.addEventListener('click', () => {
+  downloadPanel.classList.remove('show');
+});
+
+// Reposiciona el texto si cambia el tamaño de letra antes de grabar
+fontsizeEl.addEventListener('input', () => {
+  promptText.style.fontSize = fontsizeEl.value + 'px';
+});
+
+speedEl.addEventListener('input', () => {
+  speedLiveEl.value = speedEl.value;
+});
+
+window.addEventListener('resize', () => {
+  if (!isRecording) resetScroll();
+});
+</script>
+</body>
+</html>
